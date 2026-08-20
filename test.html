@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meditation Environment Dashboard</title>
+    <!-- CDN สำหรับ MQTT.js -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f0f4f8;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        p.subtitle {
+            color: #7f8c8d;
+            margin-bottom: 2rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            text-align: center;
+            transition: transform 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+        }
+
+        .card h2 {
+            font-size: 1.1rem;
+            color: #555;
+            margin-bottom: 1rem;
+        }
+
+        .card .value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .card .unit {
+            font-size: 1rem;
+            color: #888;
+        }
+
+        .status-card {
+            grid-column: 1 / -1;
+            background: #e8f5e9;
+            border: 2px solid #a5d6a7;
+        }
+
+        .status-card h2 {
+            color: #1b5e20;
+        }
+
+        .status-text {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .status-description {
+            margin-top: 0.5rem;
+            font-size: 0.95rem;
+            color: #444;
+        }
+
+        .connection-status {
+            margin-top: 1.5rem;
+            font-size: 0.85rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Meditation Zone Monitor</h1>
+    <p class="subtitle">ระบบตรวจสอบสภาพแวดล้อมที่เหมาะสมต่อการฝึกสมาธิ</p>
+
+    <div class="dashboard-grid">
+        <!-- Temperature Card -->
+        <div class="card">
+            <h2>อุณหภูมิ (Temperature)</h2>
+            <div class="value" id="temp-val">--</div>
+            <span class="unit">°C</span>
+        </div>
+
+        <!-- Humidity Card -->
+        <div class="card">
+            <h2>ความชื้น (Humidity)</h2>
+            <div class="value" id="hum-val">--</div>
+            <span class="unit">%</span>
+        </div>
+
+        <!-- Meditation Status Card -->
+        <div class="card status-card" id="status-card">
+            <h2>สถานะบรรยากาศการทำสมาธิ</h2>
+            <div class="status-text" id="status-text">กำลังรอข้อมูล...</div>
+            <div class="status-description" id="status-desc">ระบบกำลังประมวลผลค่าจากเซนเซอร์</div>
+        </div>
+    </div>
+
+    <div class="connection-status" id="mqtt-status">สถานะการเชื่อมต่อ: กำลังเชื่อมต่อ MQTT...</div>
+
+    <script>
+        // ตั้งค่าการเชื่อมต่อ MQTT (ตัวอย่างใช้ Public HiveMQ Broker ผ่าน WebSocket)
+// HiveMQ Cloud Secure WebSocket URL from your screenshot
+        const brokerUrl = 'wss://66eaaa4fdef5495fb2f7fd2190169c89.s1.eu.hivemq.cloud:8884/mqtt';
+
+        const options = {
+            clientId: 'meditation_web_' + Math.random().toString(16).substr(2, 8),
+            username: 'hivemq.webclient.1787195083604', // Created in Access Management
+            password: '&!%@9850CABDfbyHqEze', // Created in Access Management
+            clean: true,
+            connectTimeout: 4000
+        };
+
+        // Topic names configured on your hardware/sensor
+        // const topicTemp = 'value';
+        // const topicHum = 'value';
+
+        const topicValue = 'value';
+
+        const client = mqtt.connect(brokerUrl, options);
+
+        let currentTemp = null;
+        let currentHum = null;
+
+        client.on('connect', () => {
+            document.getElementById('mqtt-status').innerText = 'สถานะการเชื่อมต่อ: เชื่อมต่อ MQTT Broker สำเร็จ';
+            document.getElementById('mqtt-status').style.color = '#2e7d32';
+            
+            client.subscribe(topicValue);
+        });
+
+        client.on('error', (err) => {
+            document.getElementById('mqtt-status').innerText = 'สถานะการเชื่อมต่อ: ไม่สามารถเชื่อมต่อได้';
+            document.getElementById('mqtt-status').style.color = '#c62828';
+        });
+
+        client.on('message', (topic, message) => {
+            if (topic === topicValue){
+                try{
+                    const data = JSON.parse(message.toString());
+
+                    if (data.temperature !== undefined) {
+                        currentTemp = parseFloat(data.temperature);
+                        document.getElementById('temp-val').innerText = currentTemp.toFixed(1);
+                    }
+
+                    if (data.humidity !== undefined) {
+                        currentHum = parseFloat(data.humidity);
+                        document.getElementById('hum-val').innerText = currentHum.toFixed(1);
+                    }
+
+                    evaluateMeditationCondition();
+            } catch (err) {
+                console.error(err)
+            }
+            }
+        });
+
+        // เกณฑ์ประเมินสภาพแวดล้อมที่เหมาะสมสำหรับการทำสมาธิ
+        // อุณหภูมิที่เหมาะสม: 23°C - 26°C | ความชื้นที่เหมาะสม: 40% - 60%
+        function evaluateMeditationCondition() {
+            if (currentTemp === null || currentHum === null) return;
+
+            const statusCard = document.getElementById('status-card');
+            const statusText = document.getElementById('status-text');
+            const statusDesc = document.getElementById('status-desc');
+
+            const isTempIdeal = currentTemp >= 23 && currentTemp <= 30;
+            const isHumIdeal = currentHum >= 40 && currentHum <= 60;
+
+            if (isTempIdeal && isHumIdeal) {
+                statusText.innerText = '🌿 สภาพแวดล้อมสมบูรณ์แบบ';
+                statusDesc.innerText = 'อุณหภูมิและความชื้นอยู่ในเกณฑ์ที่ผ่อนคลาย เหมาะแก่การสมาธิอย่างยิ่ง';
+                statusCard.style.backgroundColor = '#e8f5e9';
+                statusCard.style.borderColor = '#a5d6a7';
+                statusText.style.color = '#2e7d32';
+            } else if (isTempIdeal || isHumIdeal) {
+                statusText.innerText = '⚖️ สภาพแวดล้อมปานกลาง';
+                statusDesc.innerText = 'บรรยากาศพอใช้ได้ อาจปรับอุณหภูมิหรือระบายอากาศเพิ่มเติมเพื่อความสบายตัว';
+                statusCard.style.backgroundColor = '#fffde7';
+                statusCard.style.borderColor = '#fff59d';
+                statusText.style.color = '#f57f17';
+            } else {
+                statusText.innerText = '⚠️ สภาพแวดล้อมยังไม่เหมาะสม';
+                statusDesc.innerText = 'บรรยากาศอาจร้อน/เย็น หรือแห้ง/ชื้นเกินไป อาจทำให้เสียการจดจ่อได้ง่าย';
+                statusCard.style.backgroundColor = '#ffebee';
+                statusCard.style.borderColor = '#ef9a9a';
+                statusText.style.color = '#c62828';
+            }
+        }
+    </script>
+</body>
+</html>
